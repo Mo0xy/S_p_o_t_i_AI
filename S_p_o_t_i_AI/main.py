@@ -5,6 +5,7 @@ import os
 import requests
 
 # Configura le tue credenziali qui
+
 load_dotenv()
 REDIRECT_URI = 'http://localhost:8888/callback'
 SCOPE = 'user-library-read'  # Cambia il scope in base alle tue esigenze
@@ -45,7 +46,6 @@ def get_mbrz_data():
     print("\n")
     high_level_data = requests.get(f"https://acousticbrainz.org/{mbid}/high-level").json()
     print(high_level_data)
-
 
 
 if __name__ == "__main__":
