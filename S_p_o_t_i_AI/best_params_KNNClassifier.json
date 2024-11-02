@@ -1,0 +1,1 @@
+{"algorithm": "auto", "metric": "euclidean", "n_neighbors": 3, "weights": "distance"}
