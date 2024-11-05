@@ -33,6 +33,20 @@ class Dataset:
     def dropDatasetColumns(self, columnsToRemove):
         self.dataset = self.dataset.drop(columns=columnsToRemove)
 
+    def remove_text_columns(self):
+        """
+        Rimuove tutte le colonne contenenti dati testuali da un DataFrame.
+
+        Parametri:
+            df (pd.DataFrame): Il DataFrame da cui rimuovere le colonne.
+
+        Ritorna:
+            pd.DataFrame: Un nuovo DataFrame senza colonne testuali.
+        """
+        # Seleziona solo le colonne che non sono di tipo "object" (testuale)
+        non_text_df = self.dataset.select_dtypes(exclude=['object'])
+        return non_text_df
+
     def addDatasetColumn(self, column, value):
         self.dataset[column] = value
 

@@ -36,7 +36,6 @@ class Classifier:
 
         self.X = X_test
         self.Y = y_test
-
         print("Model trained and evaluated\n")
 
     def saveBestParams(self, best_params, name):
@@ -49,6 +48,7 @@ class Classifier:
             with open(filepath, 'r') as file:
                 return json.load(file)
         return None
+
     """
     def train_and_evaluate_with_hyperparams(self, model, param_grid, name):
         best_params = self.loadBestParams(name)
@@ -68,11 +68,16 @@ class Classifier:
         self.evaluateModel(model, self.X, self.Y)
         #self.train_and_evaluate_with_hyperparams(model, param_grid, name)"""
 
+    def saveMetrics(self, file_path):
+        with open(file_path, 'a') as file:
+            file.write(str(self.metrics) + '\n')
+
     def run(self):
         self.model.set_params(**self.params)
         X_train, X_test, y_train, y_test = train_test_split(self.X, self.Y, test_size=0.2, random_state=42)
         self.model.fit(X_train, y_train)
         self.evaluateModel(self.model, X_test, y_test)
+        self.saveMetrics('metrics.txt')
 
     def getMetrics(self):
         return self.metrics
