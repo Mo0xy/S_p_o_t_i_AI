@@ -209,3 +209,12 @@ if __name__ == "__main__":
     rf.run()
 
     print(rf.getMetrics())
+
+    # --- esecuzione Decision Tree ---
+    
+    dt = DecisionTreeTrainer(target_column="genres",
+                             drop_columns=["genres", "Cluster"],
+                             dataset=kmeans_data)
+    dt.findBestParams()
+    dt.run()
+    print(dt.getMetrics())
