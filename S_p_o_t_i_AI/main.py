@@ -7,9 +7,9 @@ import plotly.express as px
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import MinMaxScaler
 from fuzzywuzzy import process
-from dotenv import load_dotenv
 from KNN import KNNTrainer
-from accessAPI import SpotifyClient
+from S_p_o_t_i_AI.DecisionTree import DecisionTreeTrainer
+# from S_p_o_t_i_AI.DecisionTree import DecisionTreeTrainer
 from kMeans import KMeansClustering
 from RandomForest import RandomForestTrainer
 
@@ -19,8 +19,9 @@ desired_width = 320
 pd.set_option('display.width', desired_width)
 pd.set_option('display.max_columns', 20)
 
+
 # Carica le variabili d'ambiente
-load_dotenv()
+# load_dotenv()
 
 
 # Funzione per pulire le etichette rimuovendo caratteri speciali
@@ -140,8 +141,8 @@ if __name__ == "__main__":
     kmeans.fit(kmeans_data.getDataset())
     print("Centroidi dei cluster KMeans:", "\n", kmeans.get_centroids())
     # --- Visualizzazione dei cluster ---
-    kmeans.plot_clusters(kmeans_data.getDataset(), 'valence', 'energy')
-    visualize_data_3d(kmeans_data.getDataset())
+    # kmeans.plot_clusters(kmeans_data.getDataset(), 'valence', 'energy')
+    # visualize_data_3d(kmeans_data.getDataset())
     # 'valence', 'acousticness'
     # 'valence', 'speechiness'
     # 'valence', 'instrumentalness'
@@ -183,15 +184,16 @@ if __name__ == "__main__":
     # Crea il dataset ridotto
 
     reduced_df = dataset.Dataset.from_dataframe(tuples)
+    print("Dataset ridotto:", reduced_df.getDataset())
     restored_df = reduced_df.getDataset()
-
+    """
     # --- KNN Trainer per trovare gli esempi più vicini ---
     knn = KNNTrainer(target_column="genres",
                      drop_columns=["genres"],
-                     dataset=reduced_df)
+                     dataset=kmeans_data)
     knn.findBestParams()
     knn.run()
-    print(knn.getMetrics())
+    print(knn.getMetrics())"""
 
     # Trova i 3 esempi più vicini
     """
@@ -201,11 +203,43 @@ if __name__ == "__main__":
     data = data.getDataFrame(["name", "artists"])
     print(data.iloc[nearest_examples.index])
     """
+    #
+    """
     # --- esecuzione Random Forest ---
     rf = RandomForestTrainer(target_column="genres",
-                             drop_columns=["genres"],
+                             drop_columns=["genres", "Cluster"],
                              dataset=dataset.Dataset.from_dataframe(restored_df))
     rf.findBestParams()
     rf.run()
 
     print(rf.getMetrics())
+    """
+    """
+    dt = DecisionTreeTrainer(target_column="genres",
+                             drop_columns=["genres", "Cluster"],
+                             dataset=kmeans_data)
+    dt.findBestParams()
+    dt.run()
+    print(dt.getMetrics())"""
+
+    # --- esecuzione GNN ---
+
+    from GNN import GNNClassifier  # Assicurati di avere GNNClassifier nel modulo GNN
+
+    # Definisci i parametri iniziali per il modello
+    params = {
+        'input_dim': 3,  # Tre feature: valence, energy, loudness
+        'hidden_units': 64,  # Un numero di unità nascoste di esempio
+        'output_dim': None  # Sarà impostato automaticamente su `len(mlb.classes_)` in loadData()
+    }
+
+    # Inizializza e configura il modello
+    gnn_classifier = GNNClassifier(params, kmeans_data.getDataset())
+
+    # Carica i dati e aggiorna `output_dim` basato su `genres`
+    # g, features = gnn_classifier.loadData()
+    #params['output_dim'] = len(gnn_classifier.mlb.classes_)
+
+    # Esegue la ricerca dei migliori iperparametri e addestra il modello
+    gnn_classifier.train_model()
+

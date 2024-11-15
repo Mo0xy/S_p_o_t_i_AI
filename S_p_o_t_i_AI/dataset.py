@@ -1,6 +1,8 @@
 import warnings
 import pandas as pd
-from sklearn.preprocessing import MinMaxScaler
+import torch
+from torch_geometric.data import Data
+from sklearn.preprocessing import MinMaxScaler, LabelEncoder
 
 warnings.filterwarnings("ignore")
 
@@ -100,3 +102,18 @@ class Dataset:
 
     def getColumnWithIndex(self, position):
         return self.dataset.iloc[:, position]
+
+    def toGraphData(self, node_features_columns, target_column):
+        # Converti le colonne delle caratteristiche in tensori
+        X = torch.tensor(self.dataset[node_features_columns].values, dtype=torch.float)
+
+        # Converti la colonna target in numeri interi usando LabelEncoder
+        label_encoder = LabelEncoder()
+        y = label_encoder.fit_transform(self.dataset[target_column])
+        y = torch.tensor(y, dtype=torch.long)
+
+        # Definisci edge_index (dipende dalla struttura del grafo; esempio sotto assume nessun edge)
+        edge_index = torch.empty((2, 0), dtype=torch.long)  # Usa un edge_index vuoto se non hai connessioni
+
+        return Data(x=X, edge_index=edge_index, y=y)
+
