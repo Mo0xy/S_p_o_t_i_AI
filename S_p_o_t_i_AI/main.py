@@ -10,8 +10,8 @@ from sklearn.preprocessing import LabelEncoder, MinMaxScaler, OneHotEncoder
 from sklearn.decomposition import PCA
 from S_p_o_t_i_AI import dataset
 from S_p_o_t_i_AI.DecisionTree import DecisionTreeTrainer
-from S_p_o_t_i_AI.knn import KNNTrainer
-from S_p_o_t_i_AI.randomForest import RandomForestTrainer
+from S_p_o_t_i_AI.KNN import KNNTrainer
+from S_p_o_t_i_AI.RandomForest import RandomForestTrainer
 
 LABEL_ENCODER_PATH = "label_encoder.pkl"
 CLASSES_PATH = "classes.json"
