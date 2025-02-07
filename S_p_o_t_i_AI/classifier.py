@@ -1,21 +1,14 @@
-from sklearn.metrics import accuracy_score, f1_score
-from sklearn.metrics import precision_score, recall_score
+import os
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+import numpy as np
 from sklearn.model_selection import train_test_split
-from imblearn.over_sampling import SMOTE
-from sklearn.feature_selection import SelectKBest, f_classif
-from sklearn.ensemble import IsolationForest
-from collections import Counter
 from os import path
 import json
-
-from sklearn.neighbors import KNeighborsClassifier
 
 
 class Classifier:
     def __init__(self, target_column, drop_columns, dataset):
-        self.params = None
-        self.metrics = None
-        self.model = None
         self.dataset = dataset
         self.target_column = target_column
         self.drop_columns = drop_columns
@@ -25,25 +18,7 @@ class Classifier:
         target = dataset.getColumn(self.target_column)
         dataset.dropDatasetColumns(self.drop_columns)
         X = dataset.getDataset()
-
-        # Controlla la distribuzione delle classi
-        class_counts = Counter(target)
-        min_samples = 5  # numero minimo di campioni per classe da conservare
-
-        # Filtra le classi con almeno min_samples campioni
-        valid_classes = [cls for cls, count in class_counts.items() if count >= min_samples]
-        mask = target.isin(valid_classes)
-        X, target = X[mask], target[mask]
-
-        # Imposta k_neighbors come minimo tra 5 e il numero minimo di campioni meno 1, ma almeno 1
-        k_neighbors = max(1, min(5, min(class_counts.values()) - 1))
-        smote = SMOTE(random_state=42, k_neighbors=k_neighbors)
-
-        # Applica SMOTE solo se ci sono abbastanza campioni per ogni classe rimanente
-        X_resampled, y_resampled = smote.fit_resample(X, target)
-
-        return X_resampled, y_resampled
-
+        return X, target
 
     def evaluateModel(self, model, X_test, y_test):
         y_pred = model.predict(X_test)
@@ -58,63 +33,83 @@ class Classifier:
 
         self.X = X_test
         self.Y = y_test
+
         print("Model trained and evaluated\n")
 
+
+    def run(self):
+        # Imposta i parametri del modello
+        self.model.set_params(**self.params)
+
+        # Definisce lo stratified k-fold (ad esempio, 5 fold)
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+        # Dizionario per salvare le metriche per ciascun fold
+        metrics = {
+            'accuracy': [],
+            'precision': [],
+            'recall': [],
+            'f1_macro': [],
+            'f1_micro': []
+        }
+
+        # Ciclo sui vari fold
+        for train_index, test_index in skf.split(self.X, self.Y):
+            # Se self.X e self.Y sono array NumPy, possiamo usare gli indici direttamente.
+            # Se sono DataFrame, utilizzare .iloc[...]
+            X_train, X_test = self.X.iloc[train_index], self.X.iloc[test_index]
+            y_train, y_test = self.Y.iloc[train_index], self.Y.iloc[test_index]
+
+
+            # Addestra il modello sul fold corrente
+            self.model.fit(X_train, y_train)
+            y_pred = self.model.predict(X_test)
+
+            # Calcola le metriche e le aggiunge al dizionario
+            metrics['accuracy'].append(accuracy_score(y_test, y_pred))
+            metrics['precision'].append(precision_score(y_test, y_pred, average='macro', zero_division=0))
+            metrics['recall'].append(recall_score(y_test, y_pred, average='macro', zero_division=0))
+            metrics['f1_macro'].append(f1_score(y_test, y_pred, average='macro', zero_division=0))
+            metrics['f1_micro'].append(f1_score(y_test, y_pred, average='micro'))
+
+        # Stampa le metriche con media e deviazione standard
+        print("\nRisultati finali su dataset di test:\n")
+        print("Accuracy: {:.6f} ± {:.6f}".format(np.mean(metrics['accuracy']), np.std(metrics['accuracy'])))
+        print("Precision: {:.6f} ± {:.6f}".format(np.mean(metrics['precision']), np.std(metrics['precision'])))
+        print("Recall: {:.6f} ± {:.6f}".format(np.mean(metrics['recall']), np.std(metrics['recall'])))
+        print("F1_macro: {:.6f} ± {:.6f}".format(np.mean(metrics['f1_macro']), np.std(metrics['f1_macro'])))
+        print("F1_micro: {:.6f} ± {:.6f}".format(np.mean(metrics['f1_micro']), np.std(metrics['f1_micro'])))
+
+
     def saveBestParams(self, best_params, name):
-        with open('best_params_' + name + '.json', 'w') as file:
+        # Define the directory and file path
+        directory = 'ModelBestParams'
+        filepath = os.path.join(directory, 'best_params_' + name + '.json')
+
+        # Create the directory if it does not exist
+        os.makedirs(directory, exist_ok=True)
+
+        # Save the best parameters to the file
+        with open(filepath, 'w') as file:
             json.dump(best_params, file)
 
     def loadBestParams(self, name):
-        filepath = 'best_params_' + name + '.json'
+        filepath = 'ModelBestParams/best_params_' + name + '.json'
         if path.exists(filepath):
             with open(filepath, 'r') as file:
                 return json.load(file)
         return None
 
-    def featureSelection(self, X, y, k=10):
-        selector = SelectKBest(score_func=f_classif, k=k)
-        X_new = selector.fit_transform(X, y)
-        return X_new
-
-
-    def reduceNoise(self, X, y):
-        # Rimuove gli outlier usando Isolation Forest
-        iso_forest = IsolationForest(contamination=0.1, random_state=42)
-        yhat = iso_forest.fit_predict(X)
-
-        # Seleziona solo i dati che non sono outlier
-        mask = yhat != -1
-        X, y = X[mask], y[mask]
-        return X, y
-    """
-    def train_and_evaluate_with_hyperparams(self, model, param_grid, name):
-        best_params = self.loadBestParams(name)
-        if best_params:
-            print(f'Using saved best parameters for {name}:', best_params)
-            model.set_params(**best_params)
-            X_train, X_test, y_train, y_test = train_test_split(self.X, self.y, test_size=0.2, random_state=42)
-            model.fit(X_train, y_train)
-            self.evaluateModel(model, X_test, y_test, name)
-            return model"""
-
-    """def train_model_KNN(self, name):
-        model = KNeighborsClassifier()
-        param_grid = {
-            'n_neighbors': [3, 5, 7]
+    def printMetrics(self):
+        final_metrics = {
+            "metrics": {metric: np.mean(values) for metric, values in self.metrics.items()},
+            "std_dev": {metric: np.std(values) for metric, values in self.metrics.items()}
         }
-        self.evaluateModel(model, self.X, self.Y)
-        #self.train_and_evaluate_with_hyperparams(model, param_grid, name)"""
 
-    def saveMetrics(self, file_path):
-        with open(file_path, 'a') as file:
-            file.write(str(self.metrics) + '\n')
-
-    def run(self):
-        self.model.set_params(**self.params)
-        X_train, X_test, y_train, y_test = train_test_split(self.X, self.Y, test_size=0.2, random_state=42)
-        self.model.fit(X_train, y_train)
-        self.evaluateModel(self.model, X_test, y_test)
-        self.saveMetrics('metrics.txt')
+        print("\nRisultati finali su dataset di test:\n")
+        for metric in final_metrics["metrics"]:
+            std_display = f" ± {final_metrics.get('std_dev')[metric]:.6f}" if final_metrics.get('std_dev')[metric] is not None else ""
+            print(f"{metric.capitalize()}: {final_metrics.get('metrics')[metric]:.6f}{std_display}")
 
     def getMetrics(self):
         return self.metrics
