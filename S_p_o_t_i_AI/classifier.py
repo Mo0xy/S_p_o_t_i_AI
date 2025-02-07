@@ -1,6 +1,10 @@
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.metrics import precision_score, recall_score
 from sklearn.model_selection import train_test_split
+from imblearn.over_sampling import SMOTE
+from sklearn.feature_selection import SelectKBest, f_classif
+from sklearn.ensemble import IsolationForest
+from collections import Counter
 from os import path
 import json
 
@@ -21,7 +25,25 @@ class Classifier:
         target = dataset.getColumn(self.target_column)
         dataset.dropDatasetColumns(self.drop_columns)
         X = dataset.getDataset()
-        return X, target
+
+        # Controlla la distribuzione delle classi
+        class_counts = Counter(target)
+        min_samples = 5  # numero minimo di campioni per classe da conservare
+
+        # Filtra le classi con almeno min_samples campioni
+        valid_classes = [cls for cls, count in class_counts.items() if count >= min_samples]
+        mask = target.isin(valid_classes)
+        X, target = X[mask], target[mask]
+
+        # Imposta k_neighbors come minimo tra 5 e il numero minimo di campioni meno 1, ma almeno 1
+        k_neighbors = max(1, min(5, min(class_counts.values()) - 1))
+        smote = SMOTE(random_state=42, k_neighbors=k_neighbors)
+
+        # Applica SMOTE solo se ci sono abbastanza campioni per ogni classe rimanente
+        X_resampled, y_resampled = smote.fit_resample(X, target)
+
+        return X_resampled, y_resampled
+
 
     def evaluateModel(self, model, X_test, y_test):
         y_pred = model.predict(X_test)
@@ -36,7 +58,6 @@ class Classifier:
 
         self.X = X_test
         self.Y = y_test
-
         print("Model trained and evaluated\n")
 
     def saveBestParams(self, best_params, name):
@@ -49,6 +70,22 @@ class Classifier:
             with open(filepath, 'r') as file:
                 return json.load(file)
         return None
+
+    def featureSelection(self, X, y, k=10):
+        selector = SelectKBest(score_func=f_classif, k=k)
+        X_new = selector.fit_transform(X, y)
+        return X_new
+
+
+    def reduceNoise(self, X, y):
+        # Rimuove gli outlier usando Isolation Forest
+        iso_forest = IsolationForest(contamination=0.1, random_state=42)
+        yhat = iso_forest.fit_predict(X)
+
+        # Seleziona solo i dati che non sono outlier
+        mask = yhat != -1
+        X, y = X[mask], y[mask]
+        return X, y
     """
     def train_and_evaluate_with_hyperparams(self, model, param_grid, name):
         best_params = self.loadBestParams(name)
@@ -68,11 +105,16 @@ class Classifier:
         self.evaluateModel(model, self.X, self.Y)
         #self.train_and_evaluate_with_hyperparams(model, param_grid, name)"""
 
+    def saveMetrics(self, file_path):
+        with open(file_path, 'a') as file:
+            file.write(str(self.metrics) + '\n')
+
     def run(self):
         self.model.set_params(**self.params)
         X_train, X_test, y_train, y_test = train_test_split(self.X, self.Y, test_size=0.2, random_state=42)
         self.model.fit(X_train, y_train)
         self.evaluateModel(self.model, X_test, y_test)
+        self.saveMetrics('metrics.txt')
 
     def getMetrics(self):
         return self.metrics
