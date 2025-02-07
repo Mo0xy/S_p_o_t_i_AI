@@ -20,6 +20,7 @@ class DecisionTreeTrainer(Classifier):
         }
 
         best_params = self.loadBestParams(name)
+
         if best_params:
             print(f'Using saved best parameters for {name}:', best_params)
             self.params = best_params

@@ -1,17 +1,14 @@
+import pandas
 import warnings
-import pandas as pd
-import torch
-from torch_geometric.data import Data
-from sklearn.preprocessing import MinMaxScaler, LabelEncoder
+from sklearn.preprocessing import MinMaxScaler
 
 warnings.filterwarnings("ignore")
 
 
 class Dataset:
-
-    def __init__(self, path=None, dataframe=None):
+    def __init__(self, dataframe=None, path=None):
         if path is not None:
-            self.dataset = pd.read_csv(path)
+            self.dataset = pandas.read_csv(path)
         elif dataframe is not None:
             self.dataset = dataframe
         else:
@@ -24,30 +21,12 @@ class Dataset:
     def getDataset(self):
         return self.dataset
 
-    def getReducedDataset(self, percentage):
-        self.dataset = self.dataset.sample(frac=percentage, random_state=1)
-        self.dataset.to_csv('dataReduced.csv', index=False)
-        return self
-
     def setDataset(self, dataset):
         self.dataset = dataset
 
     def dropDatasetColumns(self, columnsToRemove):
-        self.dataset = self.dataset.drop(columns=columnsToRemove)
-
-    def remove_text_columns(self):
-        """
-        Rimuove tutte le colonne contenenti dati testuali da un DataFrame.
-
-        Parametri:
-            df (pd.DataFrame): Il DataFrame da cui rimuovere le colonne.
-
-        Ritorna:
-            pd.DataFrame: Un nuovo DataFrame senza colonne testuali.
-        """
-        # Seleziona solo le colonne che non sono di tipo "object" (testuale)
-        non_text_df = self.dataset.select_dtypes(exclude=['object'])
-        return non_text_df
+        if columnsToRemove is not None:
+            self.dataset = self.dataset.drop(columns=columnsToRemove)
 
     def addDatasetColumn(self, column, value):
         self.dataset[column] = value
@@ -62,11 +41,17 @@ class Dataset:
         return self.dataset[columns]
 
     def normalizeColumn(self, column):
-        scaler = MinMaxScaler()
-        self.dataset[column] = scaler.fit_transform(self.dataset[[column]])
+        scalera = MinMaxScaler()
+        self.dataset[column] = scalera.fit_transform(self.dataset[[column]])
 
-    def replaceEmptyValues(self, column, toReplace):
+    def emptyValues(self, column, toReplace):
         self.dataset[column] = self.dataset[column].replace(toReplace, 1).fillna(0)
+
+    def getDummies(self, column):
+        self.dataset = pandas.get_dummies(self.dataset, columns=[column], drop_first=True)
+
+    def replaceBoolean(self, T1=True, T2=False):
+        self.dataset = self.dataset.replace({T1: 1, T2: 0})
 
     def EDA(self):
         # uniqueness analysis
@@ -78,42 +63,3 @@ class Dataset:
         # null Values
         missingValues = self.dataset.isnull().sum()
         missingValues.to_csv("EDA/missing_values.csv")
-
-    def normalizeTuple(self, t):
-
-        # Creare un DataFrame dal dataset
-        df = pd.DataFrame(self.getDataset())
-
-        # Verifica che la tupla abbia la stessa lunghezza delle colonne del dataset
-        if len(t) != len(df.columns):
-            raise ValueError(f"La tupla fornita ha {len(t)} elementi, "
-                             f"ma ci si aspettano {len(df.columns)} elementi.")
-
-        # Crea e adatta un MinMaxScaler per ogni colonna numerica
-        scalers = {col: MinMaxScaler().fit(df[[col]]) for col in df.columns}
-
-        # Normalizza i valori della tupla
-        normalized_tuple = []
-        for i, col in enumerate(df.columns):
-            normalized_value = scalers[col].transform([[t[i]]])[0][0]
-            normalized_tuple.append(normalized_value)
-
-        return tuple(normalized_tuple)  # Restituisce la tupla normalizzata
-
-    def getColumnWithIndex(self, position):
-        return self.dataset.iloc[:, position]
-
-    def toGraphData(self, node_features_columns, target_column):
-        # Converti le colonne delle caratteristiche in tensori
-        X = torch.tensor(self.dataset[node_features_columns].values, dtype=torch.float)
-
-        # Converti la colonna target in numeri interi usando LabelEncoder
-        label_encoder = LabelEncoder()
-        y = label_encoder.fit_transform(self.dataset[target_column])
-        y = torch.tensor(y, dtype=torch.long)
-
-        # Definisci edge_index (dipende dalla struttura del grafo; esempio sotto assume nessun edge)
-        edge_index = torch.empty((2, 0), dtype=torch.long)  # Usa un edge_index vuoto se non hai connessioni
-
-        return Data(x=X, edge_index=edge_index, y=y)
-
