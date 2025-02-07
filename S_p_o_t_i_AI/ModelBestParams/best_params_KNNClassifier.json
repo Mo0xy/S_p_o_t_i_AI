@@ -1,0 +1,1 @@
+{"algorithm": "auto", "metric": "chebyshev", "n_neighbors": 3, "weights": "uniform"}
