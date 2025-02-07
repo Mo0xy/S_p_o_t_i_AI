@@ -1,182 +1,244 @@
+import json
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.optim as optim
+import torch_geometric.nn as pyg_nn
 from torch_geometric.data import Data
-from torch_geometric.nn import GraphConv
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MultiLabelBinarizer
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-from sklearn.neighbors import kneighbors_graph
-from torch.utils.data import DataLoader, TensorDataset
-
-from sklearn.model_selection import ParameterGrid
-from torch_geometric.nn import SAGEConv  # Sostituisci GraphConv con SAGEConv
+from scipy.spatial.distance import cdist
+from sklearn.model_selection import ParameterGrid, StratifiedKFold
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.utils.class_weight import compute_class_weight
 
 
-class GNNModel(nn.Module):
-    def __init__(self, input_dim, hidden_units, output_dim):
-        super(GNNModel, self).__init__()
-        self.conv1 = SAGEConv(input_dim, hidden_units)  # Sostituisci con SAGEConv
-        self.conv2 = SAGEConv(hidden_units, output_dim)
+class GNNClassifier(nn.Module):
+    def __init__(self, num_classes, in_features=64, hidden_dim=64, dropout_rate=0.6):
+        super(GNNClassifier, self).__init__()
+        self.name = "GNNClassifier"
+        self.in_features = in_features
+        self.hidden_dim = hidden_dim
+        self.num_classes = num_classes
+        self.conv1 = pyg_nn.SAGEConv(in_features, hidden_dim)
+        self.conv2 = pyg_nn.SAGEConv(hidden_dim, num_classes)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(dropout_rate)
+        self.loss_fn = nn.CrossEntropyLoss()
 
-    def forward(self, features, edge_index):
-        features = features.float()
-        edge_index = edge_index.long()  # Assicura che edge_index sia torch.long
-
-        # Debug: Verifica i tipi prima della convoluzione
-        # print("edge_index dtype:", edge_index.dtype)  # Deve essere torch.long
-        # print("features dtype:", features.dtype)  # Deve essere torch.float
-
-        x = self.conv1(features, edge_index)
-        x = torch.relu(x)
+    def forward(self, data):
+        x, edge_index = data.x, data.edge_index
+        x = self.conv1(x, edge_index)
+        x = self.relu(x)
+        x = self.dropout(x)
         x = self.conv2(x, edge_index)
-        return torch.sigmoid(x)
+        return x
 
+    def train_model(self, data, params, patience=10):
 
-class GNNClassifier:
-    def __init__(self, params, dataset):
-        self.trained_model = None
-        self.params = params
-        self.dataset = dataset
-        self.mlb = MultiLabelBinarizer()
+        self.hidden_dim = params['hidden_units']
+        epochs = params['epochs']
+        lr = params['lr']
+        optimizer = optim.Adam(self.parameters(), lr=lr)
+        best_loss = float('inf')
+        patience_counter = 0
 
-    def loadData(self):
-        feature_columns = ['valence', 'energy', 'loudness']
-        features = torch.tensor(self.dataset[feature_columns].values, dtype=torch.float)
+        class_weights = compute_class_weight(class_weight='balanced',
+                                             classes=np.unique(data.y.cpu().numpy()),
+                                             y=data.y.cpu().numpy())
+        class_weights = torch.tensor(class_weights, dtype=torch.float).to(data.y.device)
+        self.loss_fn = nn.CrossEntropyLoss(weight=class_weights)
 
-        genres = self.dataset['genres'].apply(eval)
-        self.Y = self.mlb.fit_transform(genres)
-
-        knn_graph = kneighbors_graph(self.dataset[feature_columns], n_neighbors=5, mode='connectivity',
-                                     include_self=False)
-
-        # Converte `edge_index` in un tensore di tipo torch.long
-        edge_index = torch.tensor(knn_graph.nonzero(), dtype=torch.long).view(2, -1)
-
-        # Debug: verifica il tipo e la forma di edge_index
-        # print("edge_index dtype:", edge_index.dtype)  # Deve essere torch.long
-        # print("edge_index shape:", edge_index.shape)  # Deve essere [2, num_edges]
-
-        self.g = Data(x=features, edge_index=edge_index)
-
-        # Debug: verifica il tipo e la forma di features
-        # print("features dtype:", features.dtype)  # Deve essere torch.float
-        # print("features shape:", features.shape)  # Verifica che la forma sia corretta
-
-        return features
-
-    def train_model(self):
-        features = self.loadData()
-        self.params['output_dim'] = len(self.mlb.classes_)
-        edge_index = self.g.edge_index  # Usa edge_index dell'intero grafo
-        labels = torch.tensor(self.Y, dtype=torch.float)
-
-        # Split train/test
-        train_indices, test_indices, y_train, y_test = train_test_split(
-            range(features.size(0)), labels, test_size=0.2, random_state=42
-        )
-        self.test_indices = test_indices  # Salva test_indices come attributo della classe
-
-        train_loader = DataLoader(train_indices, batch_size=32, shuffle=True)
-
-        model = GNNModel(self.params['input_dim'], self.params['hidden_units'], self.params['output_dim'])
-        criterion = nn.BCELoss()
-        optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-        epochs = 50
         for epoch in range(epochs):
-            model.train()
-            total_loss = 0
+            self.train()
+            optimizer.zero_grad()
+            logits = self(data)
+            loss = self.loss_fn(logits, data.y)
+            loss.backward()
+            optimizer.step()
 
-            for batch_indices in train_loader:
-                batch_features = features
-                batch_labels = labels[batch_indices]
-                optimizer.zero_grad()
-                output = model(batch_features, edge_index)[batch_indices]
+            if epoch % 10 == 0:
+                print(f'Epoch {epoch}: Loss = {loss.item()}')
 
-                loss = criterion(output, batch_labels)
-                loss.backward()
-                optimizer.step()
-                total_loss += loss.item()
+            # Early stopping
+            if loss.item() < best_loss:
+                best_loss = loss.item()
+                patience_counter = 0
+            else:
+                patience_counter += 1
 
-            if (epoch + 1) % 10 == 0:
-                print(f'Epoch [{epoch + 1}/{epochs}], Loss: {total_loss / len(train_loader):.4f}')
-                
-        self.trained_model = model
+            if patience_counter >= patience:
+                print(f"Early stopping at epoch {epoch}")
+                break
 
-        # Valutazione
-        self.evaluate_model(model, features, labels, test_indices=self.test_indices)
-
-    def evaluate_model(self, model, features, labels, test_indices):
-        model.eval()
-        edge_index = self.g.edge_index
-        X_test = features[test_indices]
-        y_test = labels[test_indices]
-
+    def evaluate_model(self, graph_data, multiple_runs, prev_metrics=None):
+        self.eval()
         with torch.no_grad():
-            y_pred = model(features, edge_index)
-            y_pred = y_pred[test_indices]  # Filtra i risultati solo per i test indices
-            y_pred = (y_pred > 0.5).float()
+            logits = self(graph_data)
+            preds = logits.argmax(dim=1)
+            true_labels = graph_data.y.cpu().numpy()
+            pred_labels = preds.cpu().numpy()
 
-            # Conversione a numpy
-            y_pred_np = y_pred.cpu().numpy()
-            y_test_np = y_test.cpu().numpy()
+            accuracy = float(np.mean(true_labels == pred_labels))
+            precision = float(precision_score(true_labels, pred_labels, average="macro", zero_division=0))
+            recall = float(recall_score(true_labels, pred_labels, average="macro", zero_division=0))
+            f1_macro = float(f1_score(true_labels, pred_labels, average="macro", zero_division=0))
+            f1_micro = float(f1_score(true_labels, pred_labels, average="micro", zero_division=0))
 
             metrics = {
-                'Accuracy': accuracy_score(y_test_np, y_pred_np),
-                'Precision': precision_score(y_test_np, y_pred_np, average='micro'),
-                'Recall': recall_score(y_test_np, y_pred_np, average='micro'),
-                'F1_micro score': f1_score(y_test_np, y_pred_np, average='micro'),
-                'F1_macro score': f1_score(y_test_np, y_pred_np, average='macro')
+                "accuracy": accuracy,
+                "precision": precision,
+                "recall": recall,
+                "f1_macro": f1_macro,
+                "f1_micro": f1_micro
             }
 
-            print("Model Evaluation Results:")
-            for key, value in metrics.items():
-                print(f"{key}: {value:.4f}")
-    """
-    def find_best_parameters(self, param_grid):
-        best_params = None
-        best_score = 0
+            # Calcolo della deviazione standard SOLO se abbiamo più esecuzioni
+            if multiple_runs and prev_metrics is not None:
+                std_dev = {metric: float(np.std(prev_metrics[metric] + [metrics[metric]])) for metric in metrics}
+            else:
+                std_dev = {metric: None for metric in metrics}  # Nessuna deviazione standard se esecuzione singola
 
-        # Genera combinazioni di parametri
-        for params in ParameterGrid(param_grid):
-            print(f"Testing parameters: {params}")
-            self.params.update(params)
+            # Stampa delle metriche con deviazione standard
+            for metric in metrics:
+                std_display = f" ± {std_dev[metric]:.6f}" if std_dev[metric] is not None else ""
+                print(f"{metric.capitalize()}: {metrics[metric]:.6f}{std_display}")
 
-            # Calcola input_dim basato sul numero di feature
-            if 'input_dim' not in self.params:
-                self.params['input_dim'] = self.g.x.size(1)  # Numero di colonne delle feature
+            return {"metrics": metrics, "std_dev": std_dev}
 
-            self.train_model()
+    def find_best_params(self, data, target_column, param_grid, k=5):
 
-            # Valutazione usando le metriche di test
-            model = self.trained_model  # Assumendo che train_model salvi il modello finale in self.trained_model
-            features = self.g.x
-            labels = torch.tensor(self.Y, dtype=torch.float)
-            edge_index = self.g.edge_index
+        best_params = self.load_best_params(self.name)
+        if best_params:
+            self.load_best_params(self.name)
+            print(f'Using saved best parameters:', best_params)
+            return best_params
 
-            model.eval()
-            test_indices = self.test_indices
-            X_test = features[test_indices]
-            y_test = labels[test_indices]
+        grid = ParameterGrid(param_grid)
+        best_score = -np.inf
+        best_params = {}
 
-            with torch.no_grad():
-                y_pred = model(features, edge_index)
-                y_pred = y_pred[test_indices]  # Filtra per i test indices
-                y_pred = (y_pred > 0.5).float()
+        skf = StratifiedKFold(n_splits=k, shuffle=True, random_state=42)
 
-                # Conversione a numpy
-                y_pred_np = y_pred.cpu().numpy()
-                y_test_np = y_test.cpu().numpy()
+        overall_metrics = {"accuracy": [], "precision": [], "recall": [], "f1_macro": [], "f1_micro": []}
 
-                score = accuracy_score(y_test_np, y_pred_np)
-                print(f"Current Score: {score:.4f}")
+        for params in grid:
+            hidden_dim = params['hidden_units']
+            lr = params['lr']
+            epochs = params['epochs']
 
-            if score > best_score:
-                best_score = score
+            self.__init__(self.num_classes, in_features=128, hidden_dim=hidden_dim)
+
+            metrics_list = {"accuracy": [], "precision": [], "recall": [], "f1_macro": [], "f1_micro": []}
+
+            for train_idx, val_idx in skf.split(data, data[target_column]):
+                train_df, val_df = data.iloc[train_idx], data.iloc[val_idx]
+                train_graph = self.build_graph_from_dataset(train_df, target_column)
+                val_graph = self.build_graph_from_dataset(val_df, target_column)
+
+                self.train_model(train_graph, params)
+                metrics = self.evaluate_model(val_graph, multiple_runs=True, prev_metrics=metrics_list)
+
+                for metric, value in metrics["metrics"].items():
+                    metrics_list[metric].append(value)
+                    overall_metrics[metric].append(value)
+
+            avg_score = np.mean(metrics_list["f1_macro"]) if metrics_list["f1_macro"] else -np.inf
+
+            if avg_score > best_score:
+                best_score = avg_score
                 best_params = params
+                self.save_best_params(self.name, best_params)
 
-        print("Best Parameters Found:", best_params)
-        print("Best Score:", best_score)
-        self.params.update(best_params)"""
+        # Calcolo della media e deviazione standard delle metriche sui vari fold
 
+        print(f'Best params: {best_params}, Best score: {best_score}')
+        print(f'Total evaluated models: {k * len(grid)}')
+        return best_params
+        # print("\nAverage metrics across folds:", final_metrics)
+
+    def run(self, df, target_column, best_params, k_folds=5):
+        skf = StratifiedKFold(n_splits=k_folds, shuffle=True, random_state=
+        42)
+
+        metrics_list = {"accuracy": [], "precision": [], "recall": [], "f1_macro": [], "f1_micro": []}
+
+        for fold, (train_idx, test_idx) in enumerate(skf.split(df, df[target_column])):
+            print(f"Fold {fold + 1}/{k_folds}")
+            train_df, test_df = df.iloc[train_idx], df.iloc[test_idx]
+
+            # Costruisci i grafi per training e test
+            train_graph = self.build_graph_from_dataset(train_df, target_column)
+            test_graph = self.build_graph_from_dataset(test_df, target_column)
+
+            # Allena il modello
+            self.train_model(train_graph, best_params)
+
+            # Valuta il modello
+            test_metrics = self.evaluate_model(test_graph, multiple_runs=True, prev_metrics=metrics_list)
+
+            # Salva i risultati
+            for metric, value in test_metrics["metrics"].items():
+                metrics_list[metric].append(value)
+
+        # Calcola media e deviazione standard delle metriche
+        final_metrics = {
+            "metrics": {metric: np.mean(values) for metric, values in metrics_list.items()},
+            "std_dev": {metric: np.std(values) for metric, values in metrics_list.items()}
+        }
+
+        print("\nRisultati finali su dataset di test:\n")
+        for metric in final_metrics["metrics"]:
+            std_display = f" ± {final_metrics.get('std_dev')[metric]:.6f}" if final_metrics.get('std_dev')[
+                                                                                  metric] is not None else ""
+            print(f"{metric.capitalize()}: {final_metrics.get('metrics')[metric]:.6f}{std_display}")
+
+        return final_metrics
+
+    def load_best_params(self, name):
+        path = f'ModelBestParams/best_params_{name}.json'
+        try:
+            with open(path, 'r') as f:
+                save_dict = json.load(f)
+
+            model_params = save_dict["model_params"]
+            saved_num_classes = save_dict["num_classes"]
+
+            # Controllo sul numero di classi
+            if self.num_classes != saved_num_classes:
+                print(f" Warning: Mismatch in num_classes (Saved: {saved_num_classes}, Current: {self.num_classes})")
+                return None  # Evita di caricare parametri incompatibili
+
+            if model_params is None:
+                print(f" Errore: Nessun 'model_params' trovato in {path}")
+                return None
+
+            print(f" Best hyperparameters loaded from {path}: {model_params}")
+            return model_params
+
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print(f" Error loading best parameters from {path}: {e}")
+            return None
+
+    def build_graph_from_dataset(self, dataframe, target_column, k=5):
+        print("building graph..")
+        df = dataframe
+        label_encoder = LabelEncoder()
+        df.loc[:, target_column] = label_encoder.fit_transform(df[target_column])
+
+        features = df.drop(columns=[target_column])
+        scaler = StandardScaler()
+        normalized_features = scaler.fit_transform(features)
+
+        distance_matrix = cdist(normalized_features, normalized_features, metric='euclidean')
+        edge_index = []
+        num_nodes = len(df)
+
+        for i in range(num_nodes):
+            nearest_indices = np.argsort(distance_matrix[i])[1:k + 1]
+            for j in nearest_indices:
+                edge_index.append((i, j))
+
+        edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
+        x = torch.tensor(normalized_features, dtype=torch.float)
+        y = torch.tensor(df[target_column].values, dtype=torch.long)
+        return Data(x=x, edge_index=edge_index, y=y)
