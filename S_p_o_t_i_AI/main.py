@@ -87,15 +87,15 @@ def cut_dataset(dataf, target_col, min_samples=50):
     Taglia il dataset in modo che contenga solo le classi con almeno min_samples campioni.
     Applica la stessa maschera a 'main_genre' per evitare di perderla.
     """
-    target = dataf[target_col]
-    class_counts = target.value_counts()
+    targt = dataf[target_col]
+    class_counts = targt.value_counts()
     valid_classes = class_counts[class_counts >= min_samples].index
-    mask = target.isin(valid_classes)
+    mask = targt.isin(valid_classes)
 
     dataf = dataf.loc[mask].copy()  # Mantiene solo le righe necessarie
-    target = target[mask]  # Aggiorna la target column
+    targt = targt[mask]  # Aggiorna la target column
 
-    return dataf, target
+    return dataf, targt
 
 
 def preprocessing(path="merged_data.csv"):

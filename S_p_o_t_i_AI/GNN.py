@@ -120,7 +120,6 @@ class GNNClassifier(nn.Module):
 
         best_params = self.load_best_params(self.name)
         if best_params:
-            #self.load_best_params(self.name)
             print(f'Using saved best parameters:', best_params)
             return best_params
 
@@ -165,11 +164,9 @@ class GNNClassifier(nn.Module):
         print(f'Best params: {best_params}, Best score: {best_score}')
         print(f'Total evaluated models: {k * len(grid)}')
         return best_params
-        # print("\nAverage metrics across folds:", final_metrics)
 
     def run(self, df, target_column, best_params, k_folds=5):
-        skf = StratifiedKFold(n_splits=k_folds, shuffle=True, random_state=
-        42)
+        skf = StratifiedKFold(n_splits=k_folds, shuffle=True, random_state=42)
 
         metrics_list = {"accuracy": [], "precision": [], "recall": [], "f1_macro": [], "f1_micro": []}
 
