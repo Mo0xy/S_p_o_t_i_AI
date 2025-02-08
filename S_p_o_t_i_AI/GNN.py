@@ -42,11 +42,22 @@ class GNNClassifier(nn.Module):
         best_loss = float('inf')
         patience_counter = 0
 
-        class_weights = compute_class_weight(class_weight='balanced',
-                                             classes=np.unique(data.y.cpu().numpy()),
-                                             y=data.y.cpu().numpy())
-        class_weights = torch.tensor(class_weights, dtype=torch.float).to(data.y.device)
-        self.loss_fn = nn.CrossEntropyLoss(weight=class_weights)
+        # Ottiene le etichette presenti nel batch
+        y_numpy = data.y.cpu().numpy()
+        unique_labels = np.unique(y_numpy)
+
+        # Calcola i pesi solo per le classi presenti
+        computed_weights = compute_class_weight(class_weight='balanced',
+                                                classes=unique_labels,
+                                                y=y_numpy)
+
+        # Crea un vettore di pesi completo per tutte le classi, impostando peso 1 per quelle mancanti
+        full_weights = np.ones(self.num_classes, dtype=np.float32)
+        for label, weight in zip(unique_labels, computed_weights):
+            full_weights[int(label)] = weight
+
+        full_weights = torch.tensor(full_weights, dtype=torch.float).to(data.y.device)
+        self.loss_fn = nn.CrossEntropyLoss(weight=full_weights)
 
         for epoch in range(epochs):
             self.train()
@@ -109,7 +120,7 @@ class GNNClassifier(nn.Module):
 
         best_params = self.load_best_params(self.name)
         if best_params:
-            self.load_best_params(self.name)
+            #self.load_best_params(self.name)
             print(f'Using saved best parameters:', best_params)
             return best_params
 
@@ -126,7 +137,7 @@ class GNNClassifier(nn.Module):
             lr = params['lr']
             epochs = params['epochs']
 
-            self.__init__(self.num_classes, in_features=128, hidden_dim=hidden_dim)
+            self.__init__(self.num_classes, in_features=self.in_features, hidden_dim=hidden_dim)
 
             metrics_list = {"accuracy": [], "precision": [], "recall": [], "f1_macro": [], "f1_micro": []}
 
@@ -193,6 +204,17 @@ class GNNClassifier(nn.Module):
             print(f"{metric.capitalize()}: {final_metrics.get('metrics')[metric]:.6f}{std_display}")
 
         return final_metrics
+
+    def save_best_params(self, name, params):
+        path = f'ModelBestParams/best_params_{name}.json'
+        save_dict = {
+            "model_params": params,
+            "num_classes": self.num_classes,
+            "hidden_dim": self.hidden_dim
+        }
+        with open(path, 'w') as f:
+            json.dump(save_dict, f)
+            print(f" Best hyperparameters saved in {path}: {params}")
 
     def load_best_params(self, name):
         path = f'ModelBestParams/best_params_{name}.json'

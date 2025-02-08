@@ -1,1 +1,0 @@
-{"model_params": {"epochs": 100, "hidden_units": 128, "lr": 0.005}, "num_classes": 40}
