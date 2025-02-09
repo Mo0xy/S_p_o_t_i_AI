@@ -145,7 +145,7 @@ def preprocessing(path="merged_data.csv"):
 if __name__ == "__main__":
     df = preprocessing("merged_data.csv")
     dataset = dataset.Dataset(df)
-
+    """"""
     # --- KNN Trainer ---
     knn = KNNTrainer(target_column="main_genre_encoded",
                      drop_columns=None,
