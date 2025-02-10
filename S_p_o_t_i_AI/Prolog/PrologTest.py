@@ -31,10 +31,10 @@ def query_to_csv(brano_preferito, output_csv, retry=True):
 
         # Salva il DataFrame in un file CSV
         df.to_csv(output_csv, index=False)
-        print(f"Risultati salvati in {output_csv}")
+        print(f"Risultati trovati e salvati in {output_csv}")
 
     elif retry:  # Se non ci sono risultati e il retry è True, riprova con la formattazione del brano
-        print("Nessun risultato trovato. Faccio un secondo tentativo cambiando formattazione brano:")
+        #print("Faccio un secondo tentativo cambiando formattazione brano:")
         brano_preferito = format_title(brano_preferito)
         query_to_csv(brano_preferito, output_csv,retry=False)  # Disabilita il retry per evitare loop infinito
 
@@ -62,15 +62,15 @@ def queryart_to_csv(brano_preferito,artista, output_csv, retry=True):
 
         # Salva il DataFrame in un file CSV
         df.to_csv(output_csv, index=False)
-        print(f"Risultati salvati in {output_csv}")
+        print(f"Risultati trovati e salvati in {output_csv}")
 
     elif retry:  # Se non ci sono risultati e il retry è True, riprova con la formattazione del brano
-        print("Nessun risultato trovato. Faccio un secondo tentativo cambiando formattazione brano:")
+        #print("Nessun risultato trovato. Faccio un secondo tentativo cambiando formattazione brano:")
         brano_preferito = format_title(brano_preferito)
         queryart_to_csv(brano_preferito, artista, output_csv,retry=False)  # Disabilita il retry per evitare loop infinito
 
     else:
-        print("Nessun risultato trovato dopo il secondo tentativo.")
+        print("Nessun risultato trovato.")
 
 
 input_data = input("Inserisci il nome del brano e l'artista separati da una virgola (ex. Da Funk, Daft Punk): ").strip()
