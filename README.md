@@ -1,5 +1,4 @@
 # S_p_o_t_i_AI
 SpotiAI was born with the aim of laying the foundations for a music recommendation system capable of analyzing song characteristics and user preferences, offering personalized suggestions. To achieve this goal, the project integrates two complementary approaches: logic programming and machine learning.
-The logic component uses the Prolog language, which exploits a dataset, appropriately preprocessed and transformed into facts, and which feeds a Constraint Satisfaction Problem (CSP) that orders songs based on their distance from the reference song. The constraints defined in Prolog compare characteristics such as energy, valence, danceability and tempo, identifying correspondences according to well-defined similarity criteria.
-In parallel, machine learning techniques, supported by a different preprocessed dataset and unsupervised learning methods, analyze the data to improve the consistency and precision of the suggestions, organizing the songs into coherent categories.
+
 This project represents the starting point for future developments, aimed at enhancing the adaptability of the system to individual preferences. The goal is to progressively refine the recommendations, in order to generate increasingly flexible and targeted suggestions.
